@@ -163,8 +163,8 @@ func (z *ZHttpd) doUpload() {
 		z.doError(err, 500)
 		return
 	}
-
-	fmt.Fprint(z.writer, fmt.Sprintf("upload success! md5 : %s", md5Sum))
+	res, _ := json.Marshal(map[string]string{"Message": "upload success!", "md5": md5Sum})
+	fmt.Fprint(z.writer, string(res))
 
 }
 
