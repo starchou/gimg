@@ -1,9 +1,10 @@
 package gimg
 
 import (
-	"code.google.com/p/gcfg"
 	_ "errors"
 	_ "strings"
+
+	"gopkg.in/gcfg.v1"
 )
 
 type AppConfig struct {

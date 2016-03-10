@@ -2,9 +2,10 @@ package gimg
 
 import (
 	"fmt"
-	"github.com/gographics/imagick/imagick"
 	"os"
 	"sync"
+
+	"gopkg.in/gographics/imagick.v2/imagick"
 )
 
 type ZFileStorage struct {

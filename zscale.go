@@ -2,8 +2,9 @@ package gimg
 
 import (
 	"fmt"
-	"github.com/gographics/imagick/imagick"
 	"math"
+
+	"gopkg.in/gographics/imagick.v2/imagick"
 )
 
 func crop(mw *imagick.MagickWand, x, y int, cols, rows uint) error {

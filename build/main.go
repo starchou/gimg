@@ -3,13 +3,12 @@ package main
 import (
 	"flag"
 	"fmt"
-	zimg "github.com/Leon2012/gimg"
-	_ "github.com/bradfitz/gomemcache/memcache"
 	"net/http"
 	"os"
 	"runtime"
-	// "os/signal"
-	// "syscall"
+
+	_ "github.com/bradfitz/gomemcache/memcache"
+	zimg "github.com/starchou/gimg"
 )
 
 var cfgFile string
