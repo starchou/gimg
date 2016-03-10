@@ -3,7 +3,7 @@ package gimg
 import (
 	_ "fmt"
 
-	"gopkg.in/gographics/imagick.v2/imagick"
+	"gopkg.in/gographics/imagick.v1/imagick"
 )
 
 type ZImage struct {

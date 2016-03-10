@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math"
 
-	"gopkg.in/gographics/imagick.v2/imagick"
+	"gopkg.in/gographics/imagick.v1/imagick"
 )
 
 func crop(mw *imagick.MagickWand, x, y int, cols, rows uint) error {
