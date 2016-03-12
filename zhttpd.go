@@ -4,20 +4,24 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"image/color"
+	"image/png"
 	"io/ioutil"
 	_ "mime/multipart"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	//"time"
+
 	"io"
+
+	"github.com/issue9/identicon"
 )
 
 type ZHttpd struct {
 	context      *ZContext
 	storage      ZStorage
-	writer       http.ResponseWriter
-	request      *http.Request
 	contentTypes map[string]string
 }
 
@@ -55,23 +59,21 @@ func genContentTypes() map[string]string {
 }
 
 func (z *ZHttpd) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	z.writer = w
-	z.request = r
 	path := r.URL.Path
 	method := r.Method
 
 	if "GET" == method {
 		if path == "/" {
-			z.doDefault()
+			z.doDefault(w, r)
 		} else if path == "/info" {
-			z.doInfo()
+			z.doInfo(w, r)
 		} else {
 			z.context.Logger.Info("path:" + path)
 			md5Sum := path[1:len(path)]
 			z.context.Logger.Info("md5Sum:" + md5Sum)
 
 			if is_md5(md5Sum) {
-				z.doGet(md5Sum)
+				z.doGet(w, r, md5Sum)
 			} else {
 				http.NotFound(w, r)
 			}
@@ -79,7 +81,9 @@ func (z *ZHttpd) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	} else if "POST" == method {
 		if path == "/upload" {
-			z.doUpload()
+			z.doUpload(w, r)
+		} else if path == "/identicon" {
+			z.generateAvatar(w, r)
 		} else {
 			http.NotFound(w, r)
 		}
@@ -91,7 +95,7 @@ func (z *ZHttpd) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func (z *ZHttpd) doDefault() {
+func (z *ZHttpd) doDefault(w http.ResponseWriter, r *http.Request) {
 	z.context.Logger.Info("call doDefault function........")
 
 	html := `<!DOCTYPE html>
@@ -101,97 +105,132 @@ func (z *ZHttpd) doDefault() {
     </head>
     <body>
         <form action="/upload" method="POST" enctype="multipart/form-data">
-
             <label for="field1">file:</label>
             <input name="upload_file" type="file" />
             <input type="submit"></input>
-
         </form>
     </body>
 </html>`
-	fmt.Fprint(z.writer, html)
+	fmt.Fprint(w, html)
 
 }
 
-func (z *ZHttpd) doInfo() {
+func (z *ZHttpd) doInfo(w http.ResponseWriter, r *http.Request) {
 	z.context.Logger.Info("call doInfo function........")
-	if err := z.request.ParseForm(); err != nil {
+	if err := r.ParseForm(); err != nil {
 		z.context.Logger.Error(err.Error())
-		z.doError(err, http.StatusForbidden)
+		z.doError(w, err, http.StatusForbidden)
 		return
 	}
 
-	md5Sum := z.request.Form.Get("md5")
+	md5Sum := r.Form.Get("md5")
 	z.context.Logger.Info("search md5  : %s", md5Sum)
 
 	imgInfo, err := z.storage.InfoImage(md5Sum)
 	if err != nil {
 		z.context.Logger.Error(err.Error())
-		z.doError(err, http.StatusForbidden)
+		z.doError(w, err, http.StatusForbidden)
 		return
 	}
 
 	json, _ := json.Marshal(imgInfo)
-	fmt.Fprint(z.writer, string(json))
+	fmt.Fprint(w, string(json))
 
 }
 
-func (z *ZHttpd) doUpload() {
+func (z *ZHttpd) doUpload(w http.ResponseWriter, r *http.Request) {
 	z.context.Logger.Info("call doUpload function........")
 
-	if err := z.request.ParseMultipartForm(CACHE_MAX_SIZE); err != nil {
+	if err := r.ParseMultipartForm(CACHE_MAX_SIZE); err != nil {
 		z.context.Logger.Error(err.Error())
-		z.doError(err, http.StatusForbidden)
+		z.doError(w, err, http.StatusForbidden)
 		return
 	}
 
-	file, _, err := z.request.FormFile("upload_file")
+	file, _, err := r.FormFile("upload_file")
 	if err != nil {
-		z.doError(err, 500)
+		z.doError(w, err, 500)
 		return
 	}
 	defer file.Close()
 
 	data, err := ioutil.ReadAll(file)
 	if err != nil {
-		z.doError(err, 500)
+		z.doError(w, err, 500)
 		return
 	}
 
 	md5Sum, err := z.storage.SaveImage(data)
 	if err != nil {
-		z.doError(err, 500)
+		z.doError(w, err, 500)
 		return
 	}
 	res, _ := json.Marshal(map[string]string{"Message": "upload success!", "md5": md5Sum})
-	fmt.Fprint(z.writer, string(res))
+	fmt.Fprint(w, string(res))
 
 }
 
-func (z *ZHttpd) doGet(md5Sum string) {
+func (z *ZHttpd) generateAvatar(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	fmt.Println(r.Form.Get("key"))
+	img, err := identicon.Make(128, color.NRGBA{102, 204, 204, 50}, color.NRGBA{0, 0, 204, 100}, []byte(r.Form.Get("key")))
+	if err != nil {
+		z.doError(w, err, 500)
+		return
+	}
+	fi, err := os.Create("u1.png")
+	if err != nil {
+		z.doError(w, err, 500)
+		return
+	}
+	err = png.Encode(fi, img)
+	if err != nil {
+		z.doError(w, err, 500)
+		return
+	}
+	defer fi.Close()
+	fi.Seek(0, 0)
+	buf, err := ioutil.ReadAll(fi)
+	if err != nil {
+		z.doError(w, err, 500)
+		return
+	}
+	if len(buf) == 0 {
+		z.doError(w, fmt.Errorf("buf is nil"), 500)
+		return
+	}
+	md5Sum, err := z.storage.SaveImage(buf)
+	if err != nil {
+		z.doError(w, err, 500)
+		return
+	}
+	res, _ := json.Marshal(map[string]string{"Message": "upload success!", "md5": md5Sum})
+	fmt.Fprint(w, string(res))
+}
+func (z *ZHttpd) doGet(writer http.ResponseWriter, req *http.Request, md5Sum string) {
 	z.context.Logger.Info("call doGet function........")
-	if err := z.request.ParseForm(); err != nil {
+	if err := req.ParseForm(); err != nil {
 		z.context.Logger.Error(err.Error())
-		z.doError(err, http.StatusForbidden)
+		z.doError(writer, err, http.StatusForbidden)
 		return
 	}
 
 	imgInfo, err := z.storage.InfoImage(md5Sum)
 	if err != nil {
 		z.context.Logger.Error(err.Error())
-		z.doError(err, http.StatusForbidden)
+		z.doError(writer, err, http.StatusForbidden)
 		return
 	}
 
 	var w, h, p, g, x, y, r, s, q int = 0, 0, 0, 0, 0, 0, 0, 0, 0
 	var i, f string
 
-	width := z.request.Form.Get("w")
-	height := z.request.Form.Get("h")
-	gary := z.request.Form.Get("g")
-	xx := z.request.Form.Get("x")
-	yy := z.request.Form.Get("y")
-	rotate := z.request.Form.Get("r")
+	width := req.Form.Get("w")
+	height := req.Form.Get("h")
+	gary := req.Form.Get("g")
+	xx := req.Form.Get("x")
+	yy := req.Form.Get("y")
+	rotate := req.Form.Get("r")
 
 	w = str2Int(width)
 	if w >= imgInfo.Width || w <= 0 {
@@ -227,7 +266,7 @@ func (z *ZHttpd) doGet(md5Sum string) {
 
 	r = str2Int(rotate)
 
-	quality := z.request.Form.Get("q")
+	quality := req.Form.Get("q")
 	q = str2Int(quality)
 	if q <= 0 {
 		//q = imgInfo.Quality
@@ -236,7 +275,7 @@ func (z *ZHttpd) doGet(md5Sum string) {
 		q = 100
 	}
 
-	save := strings.Trim(z.request.Form.Get("s"), " ")
+	save := strings.Trim(req.Form.Get("s"), " ")
 	if len(save) == 0 {
 		s = z.context.Config.Storage.SaveNew
 	} else {
@@ -246,7 +285,7 @@ func (z *ZHttpd) doGet(md5Sum string) {
 		}
 	}
 
-	format := strings.Trim(z.request.Form.Get("f"), " ")
+	format := strings.Trim(req.Form.Get("f"), " ")
 	if len(format) == 0 {
 		//f = "none"
 		//f = imgInfo.Format
@@ -290,7 +329,7 @@ func (z *ZHttpd) doGet(md5Sum string) {
 	data, err := z.storage.GetImage(request)
 
 	if err != nil {
-		z.doError(err, 500)
+		z.doError(writer, err, 500)
 		return
 	}
 
@@ -298,16 +337,16 @@ func (z *ZHttpd) doGet(md5Sum string) {
 	if z.context.Config.System.Etag == 1 {
 		newMd5Sum := gen_md5_str(data)
 
-		ifNoneMatch := z.request.Header.Get("If-None-Match")
+		ifNoneMatch := req.Header.Get("If-None-Match")
 		if len(ifNoneMatch) == 0 {
-			z.writer.Header().Set("Etag", newMd5Sum)
+			writer.Header().Set("Etag", newMd5Sum)
 		} else {
 			if ifNoneMatch == newMd5Sum {
 				z.context.Logger.Debug("Etag Matched Return 304 EVHTP_RES_NOTMOD.")
-				z.doError(fmt.Errorf("Not Modified"), http.StatusNotModified)
+				z.doError(writer, fmt.Errorf("Not Modified"), http.StatusNotModified)
 				return
 			} else {
-				z.writer.Header().Set("Etag", newMd5Sum)
+				writer.Header().Set("Etag", newMd5Sum)
 			}
 		}
 
@@ -319,28 +358,28 @@ func (z *ZHttpd) doGet(md5Sum string) {
 		for i := 0; i < len(arr); i++ {
 			header := arr[i]
 			kvs := strings.Split(header, ":")
-			z.writer.Header().Set(kvs[0], kvs[1])
+			writer.Header().Set(kvs[0], kvs[1])
 		}
 	}
 
 	imageFormat := strings.ToLower(f)
 	if contentType, ok := z.contentTypes[imageFormat]; ok {
-		z.writer.Header().Set("Content-Type", contentType)
-		z.writer.Header().Set("Accept-Ranges", "bytes")
-		if z.writer.Header().Get("Content-Encoding") == "" {
-			z.writer.Header().Set("Content-Length", strconv.Itoa(len(data)))
+		writer.Header().Set("Content-Type", contentType)
+		writer.Header().Set("Accept-Ranges", "bytes")
+		if writer.Header().Get("Content-Encoding") == "" {
+			writer.Header().Set("Content-Length", strconv.Itoa(len(data)))
 		}
-		io.Copy(z.writer, bytes.NewReader(data))
+		io.Copy(writer, bytes.NewReader(data))
 
 	} else {
 		err = fmt.Errorf("can not found content type!!!")
-		z.doError(err, http.StatusForbidden)
+		z.doError(writer, err, http.StatusForbidden)
 		return
 	}
 }
 
-func (z *ZHttpd) doError(err error, statusCode int) {
-	http.Error(z.writer, err.Error(), statusCode)
+func (z *ZHttpd) doError(w http.ResponseWriter, err error, statusCode int) {
+	http.Error(w, err.Error(), statusCode)
 	return
 }
 
