@@ -41,7 +41,7 @@ func (z *ZFileStorage) SaveImage(data []byte) (string, error) {
 
 	if is_dir(savePath) {
 		//z.context.Logger.Info("Check File Exist. Needn't Save.")
-		result = fmt.Errorf("Check File Exist. Needn't Save.")
+		//result = fmt.Errorf("Check File Exist. Needn't Save.")
 		goto cache
 	}
 

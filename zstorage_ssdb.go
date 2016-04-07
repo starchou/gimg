@@ -23,8 +23,8 @@ func (z *ZSSDBStorage) SaveImage(data []byte) (string, error) {
 	z.context.Logger.Info("md5 : %s", md5Sum)
 
 	if z.context.Redis.Exist(md5Sum) {
-		result = fmt.Errorf("File Exist, Needn't Save.")
-		return "", result
+		//result = fmt.Errorf("File Exist, Needn't Save.")
+		return md5Sum, nil
 	}
 
 	z.context.Logger.Debug("exist_db not found. Begin to Save File.")
